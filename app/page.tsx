@@ -1,49 +1,548 @@
-export default function Home() {
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import { initializeApp } from 'firebase/app';
+import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, User } from 'firebase/auth';
+import { getFirestore, collection, addDoc, onSnapshot, query, doc, updateDoc, Timestamp, orderBy, limit } from 'firebase/firestore';
+import { Shield, History, Plus, CheckCircle2, Clock, ArrowUpRight, ArrowDownLeft, X, RotateCcw, CheckSquare, Square, PenTool, AlertTriangle, Info, Key, Radio, Zap, Anchor, Lightbulb, FileText, Download } from 'lucide-react';
+
+// Firebase configuration - these will be provided by the environment
+declare const __firebase_config: string;
+declare const __initial_auth_token: string | undefined;
+declare const __app_id: string | undefined;
+
+const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+  apiKey: "demo",
+  authDomain: "demo.firebaseapp.com",
+  projectId: "demo",
+  storageBucket: "demo.appspot.com",
+  messagingSenderId: "123456789",
+  appId: "1:123456789:web:abcdef"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'ecoworld-ap-log-v3';
+
+interface StaffMember {
+  id: string;
+  rank: string;
+  name: string;
+  vehicle: string;
+  vKey: string;
+  walkieNo: string;
+  pepperSpray: string;
+  handcuffs: string;
+  tBaton: string;
+  torchlight: string;
+  walkieSn: string;
+  batterySn: string;
+}
+
+interface EquipmentLog {
+  id: string;
+  timestamp: Timestamp;
+  staffName: string;
+  staffId: string;
+  staffRank: string;
+  shift: string;
+  issuedVehicle: string;
+  issuedVKey: string;
+  issuedWalkie: string;
+  issuedPepperSpray: string;
+  issuedHandcuffs: string;
+  issuedTBaton: string;
+  issuedTorchlight: string;
+  dateStr: string;
+  timeStr: string;
+  returnStatus: string;
+  returnTimeStr?: string;
+  returnDateStr?: string;
+  returnRemarks?: string;
+  hasIncident?: boolean;
+  returnedInventory?: Record<string, boolean>;
+  userId: string;
+}
+
+interface TakenItems {
+  vehicle: boolean;
+  vKey: boolean;
+  walkie: boolean;
+  pepperSpray: boolean;
+  handcuffs: boolean;
+  tBaton: boolean;
+  torchlight: boolean;
+}
+
+interface FormData {
+  staffIndex: string;
+  shift: string;
+  vehicle: string;
+  vKey: string;
+  walkieSn: string;
+  pepperSpray: string;
+  handcuffs: string;
+  tBaton: string;
+  torchlight: string;
+  signed: boolean;
+  takenItems: TakenItems;
+}
+
+const STAFF_DATABASE: StaffMember[] = [
+  { id: '74722', rank: 'SJN/PB', name: 'MOHD KHAIRUL AZWANDY', vehicle: 'WB 2525 V', vKey: 'KEY WB 2525 V', walkieNo: 'N01', pepperSpray: 'N01 EXP:03/2025', handcuffs: 'EW001-N', tBaton: 'MP302359', torchlight: 'N01', walkieSn: 'N01 S/N:871TRXN726', batterySn: 'S/N:50002E685F04' },
+  { id: '94340', rank: 'KPL/PB', name: 'KALAIARASU', vehicle: 'WB 7324 V', vKey: 'KEY WB 7324 V', walkieNo: 'N02', pepperSpray: 'N02 EXP:03/2025', handcuffs: 'EW002-N', tBaton: 'MP302314', torchlight: 'N02', walkieSn: 'N02 S/N:871TRXN766', batterySn: 'S/N:50002E5672A4' },
+  { id: '48805', rank: 'KONST/PB', name: 'AHMAD ZAKI', vehicle: 'WB 2552 T', vKey: 'KEY WB 2552 T', walkieNo: 'N03', pepperSpray: 'N03 EXP:03/2025', handcuffs: 'EW003-N', tBaton: 'MP302994', torchlight: 'N03', walkieSn: 'N03 S/N:871TRXN722', batterySn: 'S/N:50002E700581' },
+  { id: '84103', rank: 'KONST/PB', name: 'MOHD NURUL SHAZRIEN', vehicle: 'WB 4140 V', vKey: 'KEY WB 4140 V', walkieNo: 'N04', pepperSpray: 'N04 EXP:03/2025', handcuffs: 'EW004-N', tBaton: 'MP302274', torchlight: 'N04', walkieSn: 'N04 S/N:871TRXN739', batterySn: 'S/N:50002E6FE4EC' },
+  { id: '83185', rank: 'KONST/PB', name: 'ASRUL', vehicle: 'WB 4760 U', vKey: 'KEY WB 4760 U', walkieNo: 'N05', pepperSpray: 'N05 EXP:03/2025', handcuffs: 'EW005-N', tBaton: 'MP302271', torchlight: 'N05', walkieSn: 'N05 S/N:871TRXN750', batterySn: 'S/N:50002E7696F7' },
+  { id: '91202', rank: 'KONST/PB', name: 'MUHAMMAD AFIQ', vehicle: 'WB 4795 U', vKey: 'KEY WB 4795 U', walkieNo: 'N06', pepperSpray: 'N06 EXP:03/2025', handcuffs: 'EW006-N', tBaton: 'MP302323', torchlight: 'N06', walkieSn: 'N06 S/N:871TRXN769', batterySn: 'S/N:50002E6896F4' },
+  { id: '94327', rank: 'KONST/PB', name: 'VILVANATH', vehicle: 'WB 4753 U', vKey: 'KEY WB 4753 U', walkieNo: 'N07', pepperSpray: 'N07 EXP:03/2025', handcuffs: 'EW007-N', tBaton: 'MP302327', torchlight: 'N07', walkieSn: 'N07 S/N:871TRXN772', batterySn: 'S/N:50002E6FDF51' },
+  { id: '7835', rank: 'KONST/PB', name: 'NOORAZREENA', vehicle: '-', vKey: '-', walkieNo: 'N08', pepperSpray: 'N08 EXP:03/2025', handcuffs: 'EW008-N', tBaton: 'MP302331', torchlight: 'N08', walkieSn: 'N08 S/N:871TRXN774', batterySn: 'S/N:50002E67F754' }
+];
+
+export default function App() {
+  const [user, setUser] = useState<User | null>(null);
+  const [logs, setLogs] = useState<EquipmentLog[]>([]);
+  const [view, setView] = useState<string>('dashboard');
+  const [showActionMenu, setShowActionMenu] = useState<boolean>(false);
+  const [currentTime, setCurrentTime] = useState<Date>(new Date());
+  const [processing, setProcessing] = useState<boolean>(false);
+  
+  const [selectedLogForReturn, setSelectedLogForReturn] = useState<EquipmentLog | null>(null);
+  const [returnRemarks, setReturnRemarks] = useState<string>('');
+  const [isIncident, setIsIncident] = useState<boolean>(false);
+  const [returnedItems, setReturnedItems] = useState<Record<string, boolean>>({});
+
+  const formatDisplayDate = (d: Date): string => d.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const formatDisplayTime = (d: Date): string => d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+
+  const [formData, setFormData] = useState<FormData>({
+    staffIndex: "", shift: 'MORNING', 
+    vehicle: '', vKey: '', walkieSn: '', pepperSpray: '', handcuffs: '', tBaton: '', torchlight: '',
+    signed: false,
+    takenItems: { vehicle: true, vKey: true, walkie: true, pepperSpray: true, handcuffs: true, tBaton: true, torchlight: true }
+  });
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const initAuth = async () => {
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (error) {
+        console.error('Auth error:', error);
+      }
+    };
+    initAuth();
+    const unsubscribe = onAuthStateChanged(auth, setUser);
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'equipment_logs'), orderBy('timestamp', 'desc'), limit(100));
+    const unsubscribe = onSnapshot(q, (s) => setLogs(s.docs.map(d => ({ id: d.id, ...d.data() } as EquipmentLog))));
+    return () => unsubscribe();
+  }, [user]);
+
+  const exportToExcel = () => {
+    const headers = ["Date", "Time Out", "Time In", "Shift", "Rank", "Name", "ID", "Vehicle", "Walkie", "Pepper Spray", "Handcuffs", "Status", "Remarks"];
+    const rows = logs.map(log => [
+        log.dateStr,
+        log.timeStr,
+        log.returnTimeStr || "-",
+        log.shift,
+        log.staffRank,
+        log.staffName,
+        log.staffId,
+        log.issuedVehicle,
+        log.issuedWalkie,
+        log.issuedPepperSpray,
+        log.issuedHandcuffs,
+        log.hasIncident ? "INCIDENT" : log.returnStatus,
+        `"${(log.returnRemarks || "").replace(/"/g, '""')}"`
+    ]);
+
+    const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n");
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", `AP_Equipment_Log_${formatDisplayDate(new Date())}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Improved PDF/Print Function for Iframe environments
+  const exportToPDF = () => {
+    try {
+        // Force the browser to focus on this window before printing
+        window.focus();
+        window.print();
+    } catch (e) {
+        console.error("Print failed:", e);
+        alert("Please use the browser's Print option (Ctrl+P) to save as PDF.");
+    }
+  };
+
+  const handleStaffChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const idx = e.target.value;
+    if (!idx) { setFormData({...formData, staffIndex: ""}); return; }
+    const s = STAFF_DATABASE[parseInt(idx)];
+    setFormData({
+      ...formData, staffIndex: idx, vehicle: s.vehicle, vKey: s.vKey, walkieSn: s.walkieSn,
+      pepperSpray: s.pepperSpray, handcuffs: s.handcuffs, tBaton: s.tBaton, torchlight: s.torchlight,
+      signed: false,
+      takenItems: { vehicle: s.vehicle !== '-', vKey: s.vKey !== '-', walkie: true, pepperSpray: true, handcuffs: true, tBaton: true, torchlight: true }
+    });
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || processing || !formData.signed) return;
+    setProcessing(true);
+    const s = STAFF_DATABASE[parseInt(formData.staffIndex)];
+    
+    const finalData = {
+      timestamp: Timestamp.now(), staffName: s.name, staffId: s.id, staffRank: s.rank, shift: formData.shift,
+      issuedVehicle: formData.takenItems.vehicle ? formData.vehicle : "N/A",
+      issuedVKey: formData.takenItems.vKey ? formData.vKey : "N/A",
+      issuedWalkie: formData.takenItems.walkie ? formData.walkieSn : "N/A",
+      issuedPepperSpray: formData.takenItems.pepperSpray ? formData.pepperSpray : "N/A",
+      issuedHandcuffs: formData.takenItems.handcuffs ? formData.handcuffs : "N/A",
+      issuedTBaton: formData.takenItems.tBaton ? formData.tBaton : "N/A",
+      issuedTorchlight: formData.takenItems.torchlight ? formData.torchlight : "N/A",
+      dateStr: formatDisplayDate(new Date()), timeStr: formatDisplayTime(new Date()),
+      returnStatus: 'PENDING', userId: user.uid
+    };
+
+    try {
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'equipment_logs'), finalData);
+      setView('dashboard'); setShowActionMenu(false);
+      setFormData({ staffIndex: "", shift: 'MORNING', vehicle: '', vKey: '', walkieSn: '', pepperSpray: '', handcuffs: '', tBaton: '', torchlight: '', signed: false, takenItems: { vehicle: true, vKey: true, walkie: true, pepperSpray: true, handcuffs: true, tBaton: true, torchlight: true } });
+    } catch (err) { console.error(err); } finally { setProcessing(false); }
+  };
+
+  const handleReturn = async () => {
+    if (!user || !selectedLogForReturn || processing) return;
+    
+    setProcessing(true);
+    try {
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'equipment_logs', selectedLogForReturn.id), {
+        returnStatus: 'RETURNED', 
+        returnTimestamp: Timestamp.now(), 
+        returnTimeStr: formatDisplayTime(new Date()),
+        returnDateStr: formatDisplayDate(new Date()), 
+        returnRemarks: returnRemarks || "All items returned in good condition", 
+        hasIncident: isIncident,
+        returnedInventory: returnedItems 
+      });
+      setSelectedLogForReturn(null); setReturnRemarks(''); setIsIncident(false); setReturnedItems({});
+    } catch (err) { console.error(err); } finally { setProcessing(false); }
+  };
+
+  const toggleReturnItem = (key: string) => {
+    setReturnedItems(prev => ({
+        ...prev,
+        [key]: !prev[key]
+    }));
+  };
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-center gap-8 py-32 px-16 bg-white dark:bg-black">
-        <svg
-          viewBox="0 0 69 26"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-          className="fill-black dark:fill-white"
-        >
-          <path d="M13.7917 24.3604C12.4622 25.3549 10.7895 25.8884 8.82032 25.8884C6.66971 25.8884 4.87412 25.3543 3.47587 24.3604H13.7917Z"></path>
-          <path d="M27.8204 24.3604C26.802 25.2894 25.534 25.8884 24.1756 25.8884C22.4188 25.8884 21.02 25.339 20.108 24.3604H27.8204Z"></path>
-          <path d="M44.5726 24.3604C43.0194 25.3511 41.0762 25.8884 38.8367 25.8884C36.5972 25.8884 34.6541 25.3511 33.1008 24.3604H44.5726Z"></path>
-          <path d="M6.10452 21.7838C6.64469 22.5408 7.32257 23.0964 8.12748 23.4234H2.40008C1.94592 22.9414 1.55318 22.3936 1.22435 21.7838H6.10452Z"></path>
-          <path d="M15.9753 21.7838C15.6457 22.3936 15.2602 22.9415 14.8213 23.4234H11.8608C12.7015 23.0973 13.4264 22.543 14.0227 21.7838H15.9753Z"></path>
-          <path d="M23.2016 21.7838C23.3205 22.5267 23.6272 23.0906 24.0875 23.4234H19.4507C19.2008 22.9377 19.0348 22.3887 18.9611 21.7838H23.2016Z"></path>
-          <path d="M29.6415 21.7838C29.3929 22.3649 29.0672 22.9198 28.6798 23.4234H26.2913C26.809 23.0921 27.2884 22.5303 27.6965 21.7838H29.6415Z"></path>
-          <path d="M34.7756 21.7838C35.1876 22.498 35.7076 23.0447 36.3327 23.4234H31.8901C31.3725 22.9406 30.9182 22.3925 30.5327 21.7838H34.7756Z"></path>
-          <path d="M47.1403 21.7838C46.7548 22.3925 46.3005 22.9406 45.7829 23.4234H41.3477C41.9765 23.0447 42.5011 22.4979 42.9178 21.7838H47.1403Z"></path>
-          <path d="M4.97293 19.2072C5.1237 19.8073 5.31836 20.3552 5.55486 20.8468H0.788749C0.585257 20.3346 0.420002 19.7875 0.293988 19.2072H4.97293Z"></path>
-          <path d="M16.9458 19.2072C16.8042 19.7876 16.6278 20.3347 16.4179 20.8468H14.6376C14.9063 20.3562 15.1356 19.8083 15.3244 19.2072H16.9458Z"></path>
-          <path d="M23.146 20.8468H18.9172V19.2072H23.146V20.8468Z"></path>
-          <path d="M33.879 19.2072C33.9937 19.8097 34.1454 20.3562 34.3337 20.8468H30.0171C30.0067 20.8251 29.9961 20.8035 29.9859 20.7817C29.9802 20.8034 29.9741 20.8251 29.9682 20.8468H28.1326C28.3289 20.3505 28.4984 19.8012 28.6354 19.2072H33.879Z"></path>
-          <path d="M48.2582 19.2072C48.1017 19.7867 47.8998 20.3339 47.6561 20.8468H43.3651C43.5558 20.3562 43.71 19.8097 43.8264 19.2072H48.2582Z"></path>
-          <path d="M4.61127 16.6306C4.63883 17.207 4.69545 17.7543 4.78 18.2703H0.128844C0.056725 17.7466 0.0134713 17.1997 0 16.6306H4.61127Z"></path>
-          <path d="M17.2781 17.2464C17.2423 17.5969 17.1958 17.9383 17.1392 18.2703H15.5758C15.6704 17.8506 15.7479 17.4096 15.8073 16.9484L17.2781 17.2464Z"></path>
-          <path d="M23.146 18.2703H18.9172V16.6306H23.146V18.2703Z"></path>
-          <path d="M33.6225 16.6306C33.6374 17.2111 33.6755 17.7576 33.7361 18.2703H28.8183C28.902 17.7493 28.9618 17.2012 28.9946 16.6306H33.6225Z"></path>
-          <path d="M48.643 16.6306C48.6191 17.199 48.5595 17.7459 48.4664 18.2703H43.9719C44.0335 17.7576 44.072 17.211 44.0873 16.6306H48.643Z"></path>
-          <path d="M23.146 6.89115H28.9193V8.56739H23.146V15.6937H18.9172V8.56739H15.8592L16.4324 14.49L14.9983 14.6762C14.0055 9.75933 13.1963 8.00865 9.8132 7.85966C6.45181 7.85968 4.61542 10.5441 4.592 15.6937H0.00268892C0.175472 9.48821 3.32011 6.14613 8.93079 6.14613C9.77653 6.14614 10.7326 6.25781 11.8725 6.51853C13.152 6.78855 14.2702 6.89115 15.697 6.89115C19.7286 6.89112 21.3074 4.20914 22.0796 0H23.146V6.89115Z"></path>
-          <path d="M38.8367 6.14613C44.6383 6.14616 48.4971 9.86614 48.6497 15.6937H44.092C44.0101 10.6034 42.1785 7.97132 38.8367 7.97128C35.5308 7.97128 33.6998 10.6034 33.618 15.6937H29.0235C29.1761 9.86611 33.0351 6.14613 38.8367 6.14613Z"></path>
-          <path
-            fillRule="evenodd"
-            clipRule="evenodd"
-            d="M58.5142 19.14C59.5559 19.14 60.9024 19.5091 60.9532 22.5701H58.3236C57.7138 22.5701 57.3201 22.734 57.3709 23.3763C57.5233 25.2074 57.9934 25.385 58.6413 25.385C59.3145 25.385 59.937 25.18 60.2545 23.9229C60.28 23.8546 60.4706 23.8545 60.5468 23.8545C60.6103 23.8545 60.8389 23.8546 60.8135 23.9229C60.4197 25.6993 59.6702 26 58.6413 26C57.5996 26 55.9862 25.631 55.9862 22.5701C55.9862 19.4954 57.536 19.14 58.5142 19.14ZM58.5142 19.5773C57.9044 19.5773 57.4217 19.9736 57.3455 22.0917H59.5813C59.5051 19.9737 59.1367 19.5773 58.5142 19.5773Z"
-          ></path>
-          <path d="M63.258 19.2631C63.3215 19.2631 63.3342 19.4543 63.3342 19.509C63.3342 19.55 63.3216 19.7276 63.258 19.7276C62.6737 19.7276 62.7118 20.083 62.8262 20.5066C62.9913 21.1899 63.5121 22.9663 63.6137 23.4309C63.6391 23.5676 63.7662 23.5539 63.817 23.4309L65.0238 20.1786C65.0365 20.124 65.1763 20.124 65.2525 20.124C65.3287 20.124 65.4685 20.124 65.4939 20.1786L66.6625 23.4309C66.7006 23.5539 66.8404 23.5539 66.8658 23.4309L67.6661 20.5203C67.7931 20.083 67.8186 19.7276 67.2342 19.7276C67.1834 19.7276 67.1707 19.5773 67.1707 19.509C67.1707 19.427 67.1834 19.2631 67.2342 19.2631H68.9238C68.9746 19.2631 69 19.427 69 19.509C69 19.5773 68.9746 19.7276 68.9238 19.7276C68.3903 19.7276 68.2378 20.1239 68.1235 20.5339C67.9965 20.9438 66.5613 25.8484 66.5482 25.9043C66.5228 25.959 66.4339 25.959 66.3704 25.959C66.3069 25.959 66.2179 25.9317 66.2052 25.9043C66.1036 25.426 65.0619 22.6247 64.9222 22.1054C64.9095 21.9824 64.7443 21.9824 64.7062 22.1191C64.6554 22.2286 63.3347 25.8485 63.3216 25.9043C63.3089 25.959 63.2326 25.959 63.1564 25.959C63.0802 25.959 63.004 25.959 62.9786 25.9043L61.4033 20.5339C61.2763 20.0693 61.1111 19.7276 60.5649 19.7276C60.5268 19.7276 60.5014 19.591 60.5014 19.509C60.5014 19.4133 60.5268 19.2631 60.5649 19.2631H63.258Z"></path>
-          <path d="M53.2441 19.1264C54.0064 19.1264 55.2766 19.3724 55.2766 21.2718V24.5105C55.2766 24.9204 55.3275 25.3167 55.8991 25.3167C55.9499 25.3167 55.9627 25.4807 55.9627 25.549C55.9627 25.631 55.9499 25.795 55.8991 25.795H53.2823C53.2441 25.795 53.2187 25.6584 53.2187 25.5627C53.2187 25.4671 53.2314 25.3167 53.2823 25.3167C53.8666 25.3167 53.892 24.9204 53.892 24.5105V21.5178C53.892 19.9053 53.4347 19.8507 53.0536 19.8507C52.4184 19.8507 52.2024 20.3699 52.0119 20.7525V24.5105C52.0119 24.9341 52.0627 25.3167 52.6598 25.3167C52.7106 25.3167 52.7233 25.508 52.7233 25.549C52.7233 25.6037 52.6979 25.795 52.6598 25.795H49.8777C49.8269 25.795 49.8015 25.6583 49.8015 25.549C49.8015 25.4671 49.8269 25.3168 49.8777 25.3167C50.6526 25.3167 50.7034 24.9068 50.7034 24.5105V20.5476C50.7034 20.0693 50.5764 19.7413 49.8777 19.7413C49.8269 19.7413 49.8015 19.6047 49.8015 19.4954C49.8015 19.3861 49.8269 19.2631 49.8777 19.2631H51.6308C51.8213 19.2631 51.9611 19.3314 51.9992 19.673C52.0119 19.7687 52.0754 19.796 52.1389 19.7276C52.3422 19.4817 52.6598 19.1264 53.2441 19.1264Z"></path>
-          <path d="M48.0394 25.9621H46.8V24.629H48.0394V25.9621Z"></path>
-        </svg>
-        <div className="flex flex-col items-center text-center">
-          <h1 className="max-w-xs text-2xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            Ready for your first task
-          </h1>
+    <div className="max-w-xl mx-auto bg-slate-50 min-h-screen pb-32 font-sans antialiased">
+      <style>{`
+        @media print {
+            @page { size: auto; margin: 10mm; }
+            body { background: white !important; color: black !important; }
+            nav, header, .no-print, button { display: none !important; }
+            .print-only { display: block !important; }
+            .print-container { padding: 0 !important; width: 100% !important; }
+            .log-card { 
+                break-inside: avoid; 
+                border: 1px solid #000 !important; 
+                margin-bottom: 15px !important; 
+                padding: 15px !important;
+                box-shadow: none !important; 
+                background: white !important;
+            }
+            .main-p { padding: 0 !important; }
+            * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        }
+        .print-only { display: none; }
+      `}</style>
+
+      <header className="bg-emerald-950 p-6 text-white shadow-xl sticky top-0 z-30 border-b-4 border-emerald-500 no-print">
+        <div className="flex justify-between items-center">
+          <div className="flex items-center gap-4">
+            <Shield className="text-emerald-400" size={32} />
+            <div>
+              <h1 className="font-black text-[13px] uppercase tracking-tight">Auxiliary Police EcoWorld</h1>
+              <p className="text-[9px] text-emerald-500 font-bold uppercase tracking-[0.2em]">Equipment Record V3.5.1</p>
+            </div>
+          </div>
+          <div className="text-right font-mono">
+            <p className="text-[10px] text-emerald-600/70">{formatDisplayDate(currentTime)}</p>
+            <p className="text-lg font-black">{formatDisplayTime(currentTime)}</p>
+          </div>
         </div>
+      </header>
+
+      <main className="p-4 main-p">
+        <div className="print-only mb-8 border-b-4 border-black pb-4 text-center">
+            <h1 className="text-2xl font-black uppercase tracking-tighter">EcoWorld Auxiliary Police</h1>
+            <h2 className="text-lg font-bold uppercase underline">Official Equipment Deployment Audit Log</h2>
+            <p className="text-[10px] font-bold uppercase mt-2">Report ID: {appId.toUpperCase()} • Generated: {formatDisplayDate(new Date())} {formatDisplayTime(new Date())}</p>
+        </div>
+
+        {selectedLogForReturn && (
+          <div className="fixed inset-0 bg-emerald-950/95 z-[60] p-6 flex items-center justify-center overflow-y-auto no-print">
+            <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 space-y-6 my-auto">
+              <div className="text-center">
+                <div className={`w-16 h-16 rounded-full mx-auto flex items-center justify-center mb-2 ${isIncident ? 'bg-red-100 text-red-600' : 'bg-emerald-100 text-emerald-600'}`}>
+                   {isIncident ? <AlertTriangle size={32} /> : <RotateCcw size={32} />}
+                </div>
+                <h3 className="font-black text-slate-900 uppercase text-lg">Asset Recovery</h3>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{selectedLogForReturn.staffName}</p>
+              </div>
+
+              <div className="space-y-3">
+                <p className="text-[9px] font-black text-slate-400 uppercase px-2">Verify Item Returns:</p>
+                <div className="max-h-48 overflow-y-auto pr-1 space-y-2">
+                    {[
+                        { key: 'issuedWalkie', label: 'Walkie Set', icon: <Radio size={14}/> },
+                        { key: 'issuedVehicle', label: 'Vehicle Unit', icon: <Shield size={14}/> },
+                        { key: 'issuedVKey', label: 'Vehicle Keys', icon: <Key size={14}/> },
+                        { key: 'issuedPepperSpray', label: 'Pepper Spray', icon: <Zap size={14}/> },
+                        { key: 'issuedHandcuffs', label: 'Handcuffs', icon: <Anchor size={14}/> },
+                        { key: 'issuedTBaton', label: 'T-Baton', icon: <Zap size={14}/> },
+                        { key: 'issuedTorchlight', label: 'Torchlight', icon: <Lightbulb size={14}/> }
+                    ].filter(item => {
+                        const key = item.key as keyof EquipmentLog;
+                        return selectedLogForReturn[key] !== "N/A";
+                    }).map(item => (
+                        <div key={item.key} onClick={() => toggleReturnItem(item.key)} className={`p-3 rounded-2xl border-2 flex items-center justify-between cursor-pointer transition-all ${returnedItems[item.key] ? 'border-emerald-500 bg-emerald-50' : 'border-slate-100 bg-slate-50 opacity-60'}`}>
+                            <div className="flex items-center gap-3">
+                                <div className={returnedItems[item.key] ? 'text-emerald-600' : 'text-slate-400'}>{item.icon}</div>
+                                <div className="text-[10px] font-black uppercase text-slate-700">{item.label}</div>
+                            </div>
+                            {returnedItems[item.key] ? <CheckSquare className="text-emerald-600" /> : <Square className="text-slate-300" />}
+                        </div>
+                    ))}
+                </div>
+
+                <div className={`p-4 rounded-2xl border-2 cursor-pointer transition-all ${isIncident ? 'border-red-500 bg-red-50' : 'border-slate-100 bg-slate-50'}`} onClick={() => setIsIncident(!isIncident)}>
+                  <div className="flex items-center gap-3">
+                    {isIncident ? <CheckSquare className="text-red-600" /> : <Square className="text-slate-300" />}
+                    <span className="font-black text-[11px] uppercase text-slate-700">Report Damage / Incident</span>
+                  </div>
+                </div>
+
+                <textarea className="w-full bg-slate-50 rounded-2xl p-4 text-[10px] font-bold border-2 border-transparent focus:border-emerald-500 outline-none h-20" placeholder="Additional remarks..." value={returnRemarks} onChange={(e) => setReturnRemarks(e.target.value)} />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <button onClick={() => { setSelectedLogForReturn(null); setReturnedItems({}); }} className="py-4 rounded-2xl bg-slate-100 text-slate-400 font-black uppercase text-[10px]">Cancel</button>
+                <button onClick={handleReturn} disabled={processing} className={`py-4 rounded-2xl text-white font-black uppercase text-[10px] shadow-lg ${isIncident ? 'bg-red-600' : 'bg-emerald-600'}`}>Confirm</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {view === 'dashboard' && (
+          <div className="space-y-6">
+            <div className="grid grid-cols-2 gap-4 text-center no-print">
+              <div className="bg-white p-5 rounded-[2.5rem] border-b-4 border-orange-500 shadow-sm">
+                <Clock className="text-orange-500 mx-auto mb-2" size={24} />
+                <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest">On Field</p>
+                <p className="text-4xl font-black text-slate-800">{logs.filter(l => l.returnStatus === 'PENDING').length}</p>
+              </div>
+              <div className="bg-white p-5 rounded-[2.5rem] border-b-4 border-emerald-500 shadow-sm">
+                <CheckCircle2 className="text-emerald-500 mx-auto mb-2" size={24} />
+                <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest">Secured Today</p>
+                <p className="text-4xl font-black text-slate-800">{logs.filter(l => l.returnStatus === 'RETURNED' && l.returnDateStr === formatDisplayDate(new Date())).length}</p>
+              </div>
+            </div>
+            
+            <div className="space-y-4">
+              <p className="text-[10px] font-black text-slate-400 uppercase px-4 tracking-[0.2em] no-print">Active Deployments</p>
+              {logs.filter(l => l.returnStatus === 'PENDING').length === 0 ? (
+                <div className="text-center py-10 opacity-20 no-print"><Shield size={48} className="mx-auto mb-2" /><p className="font-black uppercase text-[10px]">No Active Staff</p></div>
+              ) : (
+                logs.filter(l => l.returnStatus === 'PENDING').map((log) => (
+                    <div key={log.id} className="bg-white rounded-[2.5rem] p-6 border border-slate-100 shadow-sm flex justify-between items-center log-card">
+                    <div>
+                        <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 uppercase">{log.shift}</span>
+                        <h3 className="font-black text-slate-900 uppercase text-lg mt-1">{log.staffName}</h3>
+                        <p className="text-[10px] font-bold text-emerald-700">{log.staffRank} • {log.staffId}</p>
+                    </div>
+                    <div className="p-3 bg-orange-50 text-orange-600 rounded-2xl no-print"><Clock size={20} /></div>
+                    <div className="print-only text-[10px] font-black">Out: {log.timeStr}</div>
+                    </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+
+        {view === 'add' && (
+          <div className="bg-white rounded-[3rem] p-8 shadow-2xl animate-in slide-in-from-right-4 no-print">
+             <div className="flex justify-between items-center mb-8">
+                <h2 className="font-black text-2xl text-slate-900 uppercase italic">Deployment</h2>
+                <button onClick={() => setView('dashboard')} className="p-2 bg-slate-100 rounded-full text-slate-400"><X size={20}/></button>
+             </div>
+             <form onSubmit={handleSubmit} className="space-y-6">
+                <div className="bg-slate-50 p-1 rounded-[1.5rem] grid grid-cols-2 gap-1 font-black text-[10px] uppercase">
+                  <button type="button" onClick={() => setFormData({...formData, shift: 'MORNING'})} className={`py-3 rounded-[1.2rem] ${formData.shift === 'MORNING' ? 'bg-white shadow-md text-emerald-900' : 'text-slate-400'}`}>Morning</button>
+                  <button type="button" onClick={() => setFormData({...formData, shift: 'NIGHT'})} className={`py-3 rounded-[1.2rem] ${formData.shift === 'NIGHT' ? 'bg-emerald-950 shadow-md text-white' : 'text-slate-400'}`}>Night</button>
+                </div>
+                <select required className="w-full p-5 rounded-[1.5rem] bg-slate-50 font-black text-slate-800 border-2 border-transparent focus:border-emerald-500 outline-none appearance-none" value={formData.staffIndex} onChange={handleStaffChange}>
+                  <option value="">-- SELECT PERSONNEL --</option>
+                  {STAFF_DATABASE.map((s, idx) => <option key={s.id} value={idx}>{s.rank} {s.name}</option>)}
+                </select>
+
+                {formData.staffIndex !== "" && (
+                  <div className="space-y-3">
+                    <p className="text-[9px] font-black text-slate-400 uppercase px-2">Equipment Checklist</p>
+                    <div className="grid grid-cols-1 gap-2">
+                      {[
+                        { label: 'Walkie S/N', val: formData.walkieSn, key: 'walkie', icon: <Radio size={14}/> },
+                        { label: 'Vehicle No', val: formData.vehicle, key: 'vehicle', icon: <Shield size={14}/> },
+                        { label: 'Vehicle Key', val: formData.vKey, key: 'vKey', icon: <Key size={14}/> },
+                        { label: 'Pepper Spray', val: formData.pepperSpray, key: 'pepperSpray', icon: <Zap size={14}/> },
+                        { label: 'Handcuffs', val: formData.handcuffs, key: 'handcuffs', icon: <Anchor size={14}/> },
+                        { label: 'T-Baton', val: formData.tBaton, key: 'tBaton', icon: <Zap size={14}/> },
+                        { label: 'Torchlight', val: formData.torchlight, key: 'torchlight', icon: <Lightbulb size={14}/> }
+                      ].map(item => (
+                        <div key={item.key} className={`bg-slate-50 p-4 rounded-2xl flex items-center justify-between transition-all ${formData.takenItems[item.key as keyof TakenItems] ? 'opacity-100 border border-emerald-100 bg-white' : 'opacity-40'}`}>
+                          <div className="flex items-center gap-3">
+                            <div className="text-emerald-500">{item.icon}</div>
+                            <div>
+                               <p className="text-[7px] font-black text-slate-400 uppercase">{item.label}</p>
+                               <p className="text-[10px] font-black text-slate-800">{item.val}</p>
+                            </div>
+                          </div>
+                          <button type="button" onClick={() => setFormData(p => ({...p, takenItems: {...p.takenItems, [item.key]: !p.takenItems[item.key as keyof TakenItems]}}))}>
+                             {formData.takenItems[item.key as keyof TakenItems] ? <CheckSquare className="text-emerald-600" /> : <Square className="text-slate-300" />}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <button type="button" onClick={() => setFormData({...formData, signed: !formData.signed})} className={`w-full p-4 mt-4 rounded-xl border-2 border-dashed flex items-center justify-center gap-3 ${formData.signed ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-white border-emerald-200 text-emerald-300'}`}>
+                       <PenTool size={20} /> <span className="font-black text-xs uppercase">{formData.signed ? 'Signed' : 'Click to Sign Authorization'}</span>
+                    </button>
+                  </div>
+                )}
+                <button type="submit" disabled={!formData.signed || processing} className="w-full bg-emerald-950 text-white p-6 rounded-[2.5rem] font-black uppercase shadow-2xl disabled:opacity-30">Deploy Now</button>
+             </form>
+          </div>
+        )}
+
+        {view === 'return' && (
+          <div className="space-y-4 no-print">
+             <h2 className="font-black text-2xl text-slate-900 uppercase italic px-4">Recovery</h2>
+             {logs.filter(l => l.returnStatus === 'PENDING').length === 0 ? (
+                <div className="bg-white p-12 rounded-[3rem] text-center opacity-40 italic font-black uppercase text-[10px]">No Assets to Recover</div>
+             ) : (
+                logs.filter(l => l.returnStatus === 'PENDING').map((log) => (
+                    <div key={log.id} className="bg-white rounded-[2.5rem] p-6 shadow-sm border border-slate-100 flex justify-between items-center">
+                    <div>
+                        <h3 className="font-black text-lg text-slate-900 uppercase">{log.staffName}</h3>
+                        <p className="text-[8px] font-black text-emerald-600 uppercase">{log.shift} DEPLOYMENT</p>
+                    </div>
+                    <button onClick={() => { setSelectedLogForReturn(log); setReturnedItems({}); }} className="bg-emerald-600 text-white p-4 rounded-2xl font-black uppercase text-[10px] shadow-lg">Recover</button>
+                    </div>
+                ))
+             )}
+          </div>
+        )}
+
+        {view === 'history' && (
+          <div className="space-y-4 pb-10">
+            <div className="flex justify-between items-center px-4 no-print">
+                <h2 className="font-black text-2xl text-slate-900 uppercase italic">Archive</h2>
+                <div className="flex gap-2">
+                    <button onClick={exportToExcel} title="Export to Excel" className="p-3 bg-white border border-slate-200 rounded-xl text-emerald-700 shadow-sm hover:bg-emerald-50 transition-colors"><Download size={18} /></button>
+                    <button onClick={exportToPDF} title="Save as PDF" className="p-3 bg-white border border-slate-200 rounded-xl text-slate-700 shadow-sm hover:bg-slate-50 transition-colors"><FileText size={18} /></button>
+                </div>
+            </div>
+
+            {logs.map((log) => (
+              <div key={log.id} className={`bg-white p-6 rounded-[2.5rem] border shadow-sm log-card ${log.hasIncident ? 'border-red-500 bg-red-50/50' : 'border-slate-100'}`}>
+                <div className="flex justify-between items-start mb-3">
+                  <div>
+                    <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-1">{log.dateStr} • {log.shift}</p>
+                    <h4 className="font-black text-slate-800 uppercase text-sm">{log.staffName}</h4>
+                  </div>
+                  <div className={`text-[8px] font-black px-3 py-1.5 rounded-full ${log.returnStatus === 'PENDING' ? 'bg-orange-100 text-orange-600' : 'bg-emerald-100 text-emerald-600'}`}>
+                    {log.hasIncident ? 'INCIDENT REPORTED' : log.returnStatus}
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[8px] font-bold text-slate-500 bg-slate-50/50 p-3 rounded-2xl mb-4">
+                  <p>Walkie: {log.issuedWalkie}</p>
+                  <p>Vehicle: {log.issuedVehicle}</p>
+                  <p>Out: {log.timeStr}</p>
+                  <p>In: {log.returnTimeStr || '-'}</p>
+                </div>
+
+                {log.returnStatus === 'RETURNED' && (
+                    <div className="mb-4">
+                        <p className="text-[7px] font-black text-slate-400 uppercase mb-2">Verified Return Inventory:</p>
+                        <div className="flex flex-wrap gap-1">
+                            {(['issuedWalkie', 'issuedVehicle', 'issuedVKey', 'issuedPepperSpray', 'issuedHandcuffs', 'issuedTBaton', 'issuedTorchlight'] as const).map(key => (
+                                log[key] !== "N/A" && (
+                                    <span key={key} className={`text-[7px] font-black px-2 py-1 rounded-full uppercase ${log.returnedInventory?.[key] ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                                        {key.replace('issued', '')} {log.returnedInventory?.[key] ? '✓' : '✗'}
+                                    </span>
+                                )
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {log.returnRemarks && (
+                   <div className={`p-4 rounded-2xl flex gap-3 items-start ${log.hasIncident ? 'bg-red-100 border border-red-200' : 'bg-emerald-50'}`}>
+                      <div className={log.hasIncident ? 'text-red-600' : 'text-emerald-600'}><Info size={14}/></div>
+                      <div>
+                        <p className={`text-[8px] font-black uppercase mb-1 ${log.hasIncident ? 'text-red-700' : 'text-emerald-700'}`}>Personnel Remarks</p>
+                        <p className={`text-[10px] font-bold ${log.hasIncident ? 'text-red-900' : 'text-slate-600'}`}>&quot;{log.returnRemarks}&quot;</p>
+                      </div>
+                   </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </main>
+
+      {showActionMenu && (
+          <div className="fixed inset-0 bg-emerald-950/98 z-50 flex items-center justify-center p-6 backdrop-blur-md no-print">
+            <div className="w-full max-w-xs space-y-4">
+              <button onClick={() => { setView('add'); setShowActionMenu(false); }} className="w-full p-6 bg-orange-600 text-white rounded-[2rem] flex justify-between items-center shadow-xl">
+                <span className="font-black text-xl uppercase italic">Deploy</span> <ArrowUpRight size={24} />
+              </button>
+              <button onClick={() => { setView('return'); setShowActionMenu(false); }} className="w-full p-6 bg-emerald-600 text-white rounded-[2rem] flex justify-between items-center shadow-xl">
+                <span className="font-black text-xl uppercase italic">Recovery</span> <ArrowDownLeft size={24} />
+              </button>
+              <button onClick={() => setShowActionMenu(false)} className="w-full py-6 text-white/40 font-black uppercase text-[10px] tracking-[0.4em]">Close</button>
+            </div>
+          </div>
+        )}
+
+      <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-sm bg-emerald-950/95 backdrop-blur-md rounded-[2.5rem] p-4 flex items-center justify-around shadow-2xl z-40 no-print">
+        <button onClick={() => setView('dashboard')} className={`p-4 rounded-2xl ${view === 'dashboard' ? 'bg-emerald-500 text-white shadow-lg' : 'text-emerald-300/40'}`}><Shield size={22} /></button>
+        <button onClick={() => setShowActionMenu(true)} className="bg-white text-emerald-950 p-5 rounded-3xl -mt-12 shadow-2xl border-4 border-emerald-950"><Plus size={28} strokeWidth={3} /></button>
+        <button onClick={() => setView('history')} className={`p-4 rounded-2xl ${view === 'history' ? 'bg-emerald-500 text-white shadow-lg' : 'text-emerald-300/40'}`}><History size={22} /></button>
+      </nav>
     </div>
   );
 }
