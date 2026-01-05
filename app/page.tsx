@@ -11,19 +11,47 @@ declare const __firebase_config: string;
 declare const __initial_auth_token: string | undefined;
 declare const __app_id: string | undefined;
 
-const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
-  apiKey: "demo",
-  authDomain: "demo.firebaseapp.com",
-  projectId: "demo",
-  storageBucket: "demo.appspot.com",
-  messagingSenderId: "123456789",
-  appId: "1:123456789:web:abcdef"
+// Get Firebase config from global variables or environment variables
+const getFirebaseConfig = () => {
+  if (typeof __firebase_config !== 'undefined') {
+    try {
+      return JSON.parse(__firebase_config);
+    } catch {
+      console.warn('Failed to parse __firebase_config');
+    }
+  }
+  
+  // Check for environment variables (for local development)
+  if (typeof process !== 'undefined' && process.env) {
+    const envApiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
+    if (envApiKey) {
+      return {
+        apiKey: envApiKey,
+        authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+        projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+        storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+        messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+        appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID
+      };
+    }
+  }
+  
+  // Default demo config for testing
+  return {
+    apiKey: "demo-key",
+    authDomain: "demo.firebaseapp.com",
+    projectId: "demo-project",
+    storageBucket: "demo.appspot.com",
+    messagingSenderId: "123456789",
+    appId: "1:123456789:web:abcdef"
+  };
 };
 
+const firebaseConfig = getFirebaseConfig();
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'ecoworld-ap-log-v3';
+const appId = typeof __app_id !== 'undefined' ? __app_id : (process.env.NEXT_PUBLIC_APP_ID || 'ecoworld-ap-log-v3');
 
 interface StaffMember {
   id: string;
@@ -102,6 +130,7 @@ const STAFF_DATABASE: StaffMember[] = [
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState<boolean>(true);
   const [logs, setLogs] = useState<EquipmentLog[]>([]);
   const [view, setView] = useState<string>('dashboard');
   const [showActionMenu, setShowActionMenu] = useState<boolean>(false);
@@ -131,6 +160,7 @@ export default function App() {
   useEffect(() => {
     const initAuth = async () => {
       try {
+        setAuthLoading(true);
         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
           await signInWithCustomToken(auth, __initial_auth_token);
         } else {
@@ -138,10 +168,15 @@ export default function App() {
         }
       } catch (error) {
         console.error('Auth error:', error);
+        // Still set loading to false even on error so UI is accessible
+        setAuthLoading(false);
       }
     };
     initAuth();
-    const unsubscribe = onAuthStateChanged(auth, setUser);
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setUser(user);
+      setAuthLoading(false);
+    });
     return () => unsubscribe();
   }, []);
 
@@ -292,6 +327,8 @@ export default function App() {
           <div className="text-right font-mono">
             <p className="text-[10px] text-emerald-600/70">{formatDisplayDate(currentTime)}</p>
             <p className="text-lg font-black">{formatDisplayTime(currentTime)}</p>
+            {authLoading && <p className="text-[8px] text-yellow-400 font-bold animate-pulse">Connecting...</p>}
+            {!authLoading && user && <p className="text-[8px] text-emerald-400 font-bold">● Connected</p>}
           </div>
         </div>
       </header>
@@ -399,6 +436,20 @@ export default function App() {
                 <h2 className="font-black text-2xl text-slate-900 uppercase italic">Deployment</h2>
                 <button onClick={() => setView('dashboard')} className="p-2 bg-slate-100 rounded-full text-slate-400"><X size={20}/></button>
              </div>
+             {authLoading && (
+               <div className="text-center py-12">
+                 <div className="animate-spin w-12 h-12 border-4 border-emerald-200 border-t-emerald-600 rounded-full mx-auto mb-4"></div>
+                 <p className="text-sm font-bold text-slate-600">Initializing system...</p>
+               </div>
+             )}
+             {!authLoading && !user && (
+               <div className="text-center py-12 bg-red-50 rounded-2xl p-6">
+                 <AlertTriangle className="w-12 h-12 text-red-600 mx-auto mb-4" />
+                 <p className="text-sm font-bold text-red-900 mb-2">Authentication Required</p>
+                 <p className="text-xs text-red-700">Please check your Firebase configuration.</p>
+               </div>
+             )}
+             {!authLoading && user && (
              <form onSubmit={handleSubmit} className="space-y-6">
                 <div className="bg-slate-50 p-1 rounded-[1.5rem] grid grid-cols-2 gap-1 font-black text-[10px] uppercase">
                   <button type="button" onClick={() => setFormData({...formData, shift: 'MORNING'})} className={`py-3 rounded-[1.2rem] ${formData.shift === 'MORNING' ? 'bg-white shadow-md text-emerald-900' : 'text-slate-400'}`}>Morning</button>
@@ -442,16 +493,31 @@ export default function App() {
                   </div>
                 )}
                 <button type="submit" disabled={!formData.signed || processing} className="w-full bg-emerald-950 text-white p-6 rounded-[2.5rem] font-black uppercase shadow-2xl disabled:opacity-30">Deploy Now</button>
-             </form>
-          </div>
-        )}
+              </form>
+              )}
+           </div>
+         )}
 
         {view === 'return' && (
           <div className="space-y-4 no-print">
              <h2 className="font-black text-2xl text-slate-900 uppercase italic px-4">Recovery</h2>
-             {logs.filter(l => l.returnStatus === 'PENDING').length === 0 ? (
+             {authLoading && (
+               <div className="bg-white rounded-[3rem] p-12 text-center">
+                 <div className="animate-spin w-12 h-12 border-4 border-emerald-200 border-t-emerald-600 rounded-full mx-auto mb-4"></div>
+                 <p className="text-sm font-bold text-slate-600">Loading...</p>
+               </div>
+             )}
+             {!authLoading && !user && (
+               <div className="bg-white rounded-[3rem] p-12 text-center">
+                 <AlertTriangle className="w-12 h-12 text-red-600 mx-auto mb-4" />
+                 <p className="text-sm font-bold text-red-900 mb-2">Authentication Required</p>
+                 <p className="text-xs text-red-700">Please check your Firebase configuration.</p>
+               </div>
+             )}
+             {!authLoading && user && logs.filter(l => l.returnStatus === 'PENDING').length === 0 && (
                 <div className="bg-white p-12 rounded-[3rem] text-center opacity-40 italic font-black uppercase text-[10px]">No Assets to Recover</div>
-             ) : (
+             )}
+             {!authLoading && user && logs.filter(l => l.returnStatus === 'PENDING').length > 0 && (
                 logs.filter(l => l.returnStatus === 'PENDING').map((log) => (
                     <div key={log.id} className="bg-white rounded-[2.5rem] p-6 shadow-sm border border-slate-100 flex justify-between items-center">
                     <div>
